@@ -4,7 +4,7 @@ networks:
 
 services:
   nats:
-    image: nats:2.9.6-alpine
+    image: nats:alpine
     container_name: nats
     restart: always
     command: -c /etc/nats/nats.conf
@@ -19,14 +19,15 @@ services:
       - monitor-net
 
   exporter:
-    image: natsio/prometheus-nats-exporter:0.10.1
+    image: natsio/prometheus-nats-exporter
     container_name: nats-exporter
     restart: always
     command: 
       # see https://github.com/nats-io/prometheus-nats-exporter/blob/main/main.go#L87
       # "-connz",               # connection metrics
       - -connz_detailed         # advanced connection metrics
-      - -jsz                    # jetstream metrics
+      - -jsz
+      - all                # jetstream metrics
       - -routez                 # route metrics
       - -subz                   # subscription metrics
       - -varz                   # general metrics
