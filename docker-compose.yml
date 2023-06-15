@@ -1,0 +1,91 @@
+networks:
+  monitor-net:
+    driver: bridge
+
+services:
+  nats:
+    image: nats:2.9.6-alpine
+    container_name: nats
+    restart: always
+    command: -c /etc/nats/nats.conf
+    ports:
+      - "4222:4222" # client port
+      - "6222:6222" # cluster port
+      - "8222:8222" # monitoring port
+    volumes:
+      - ./nats.conf:/etc/nats/nats.conf
+      - $JETSTREAM_STORAGE:/data
+    networks:
+      - monitor-net
+
+  exporter:
+    image: natsio/prometheus-nats-exporter:0.10.1
+    container_name: nats-exporter
+    restart: always
+    command: 
+      - -connz
+      - -routez
+      - -subz
+      - -varz
+      # - -prefix=nats
+      - -use_internal_server_id
+      - http://nats:8222/
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "nats-monitoring"
+    depends_on:
+      - nats
+
+    # ports:
+    #   - "7777:7777"
+    
+  surveyor:
+    image: natsio/nats-surveyor
+    container_name: nats-surveyor
+    restart: always
+    volumes:
+      - ./observations:/observations
+      - $JETSTREAM_STORAGE:/data
+    command: |
+      -s "${NATS_SURVEYOR_SERVERS}" --accounts --observe /observations --jetstream /data
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "nats-monitoring"
+    depends_on:
+      - nats
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    restart: always
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - $PROMETHEUS_STORAGE:/usr/local/share/prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/usr/local/share/prometheus
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "nats-monitoring"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - surveyor
+      - exporter
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "nats-monitoring"
+    depends_on:
+      - prometheus
